@@ -1,41 +1,45 @@
 const Koa = require('koa')
-const bodyParser = require('koa-bodyparser')
-const cors = require('koa2-cors')
-
-const router = require('./src/routers/index')
-
 const app = new Koa()
+const views = require('koa-views')
+const json = require('koa-json')
+const onerror = require('koa-onerror')
+const bodyparser = require('koa-bodyparser')
+const logger = require('koa-logger')
 
+const index = require('./routes/index')
+const mockapi = require('./routes/mockapi')
 
-// 跨域中间件
-app.use(cors({
-    origin: ctx => {
-        const localhost = new RegExp(/^(localhost)/)
-        if (localhost.test(ctx.request.header.host)) {
-            return '*'
-        }
-        //如果你想要拦截跨域可以返回false
-        // return false 
-        return '*'
-    },
-    exposeHeaders: ['WWW-Authenticate', 'Server-Authorization'],
-    maxAge: 5,
-    credentials: true,
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowHeaders: ['Content-Type', 'Authorization', 'Accept'],
+// error handler
+onerror(app)
+
+// middlewares
+app.use(bodyparser({
+    enableTypes: ['json', 'form', 'text']
+}))
+app.use(json())
+app.use(logger())
+app.use(require('koa-static')(__dirname + '/public'))
+
+app.use(views(__dirname + '/views', {
+    extension: 'pug'
 }))
 
-app.use(bodyParser()) //post解析中间件
+// logger
+app.use(async (ctx, next) => {
+    const start = new Date()
+    await next()
+    const ms = new Date() - start
+    console.log(`${ctx.method} ${ctx.url} - ${ms}ms`)
+    ctx.set('Access-Control-Allow-Origin', '*')
+})
 
+// routes
+app.use(index.routes(), index.allowedMethods())
+app.use(mockapi.routes(), mockapi.allowedMethods())
 
+// error-handling
+app.on('error', (err, ctx) => {
+    console.error('server error', err, ctx)
+});
 
-
-
-
-app.use(router.routes()); //作用：启动路由
-app.use(router.allowedMethods());
-/* 作用： 这是官方文档的推荐用法,我们可以看到router.allowedMethods()用在了路由匹配
-router.routes()之后,目的在于：根据ctx.status 设置response 响应头
-*/
-
-app.listen(3000)
+module.exports = app
